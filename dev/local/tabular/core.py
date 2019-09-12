@@ -15,16 +15,17 @@ pd.set_option('mode.chained_assignment','raise')
 
 #Cell
 class Tabular(CollBase):
-    def __init__(self, df, cat_names=None, cont_names=None, y_names=None, is_y_cat=True, splits=None):
+    "A `DataFrame` wrapper that knows which cols are cont/cat/y, and returns rows in `__getitem__`"
+    def __init__(self, df, cat_names=None, cont_names=None, y_names=None, is_y_cat=True, split=None):
         super().__init__(df)
-        self.splits = L(ifnone(splits,slice(None)))
+        self.split = None if split is None else split-1 #pandas is crazy and loc is inclusive
         store_attr(self, 'y_names,is_y_cat')
         self.cat_names,self.cont_names = L(cat_names),L(cont_names)
         self.cat_y  = None if not is_y_cat else y_names
         self.cont_y = None if     is_y_cat else y_names
 
     def _new(self, df):
-        return Tabular(df, self.cat_names, self.cont_names, y_names=self.y_names, is_y_cat=self.is_y_cat, splits=self.splits)
+        return Tabular(df, self.cat_names, self.cont_names, y_names=self.y_names, is_y_cat=self.is_y_cat, split=self.split)
 
     def set_col(self,k,v): super().__setitem__(k, v)
     def transform(self, cols, f): self.set_col(cols, self.loc[:,cols].transform(f))
@@ -42,7 +43,7 @@ class Tabular(CollBase):
     def loc(self): return self.items.loc
 
     @property
-    def targ(self): return self.loc[:,self.y_names]
+    def targ(self): return self.items[self.y_names]
     @property
     def all_cont_names(self): return self.cont_names + self.cont_y
     @property
@@ -65,28 +66,31 @@ _add_prop(Tabular, 'all_col')
 
 #Cell
 class TabularProc(InplaceTransform):
-    "Base class to write a tabular processor for dataframes"
-    def process(self, *args,**kwargs): return self(*args,**kwargs)
+    "Base class to write a non-lazy tabular processor for dataframes"
+    def setup(self, items=None):
+        super().setup(items)
+        # Procs are called as soon as data is available
+        return self(items)
 
 #Cell
 class Categorify(TabularProc, CollBase):
     "Transform the categorical variables to that type."
     order = 1
-    def setup(self, to):
-        to.classes = self.items = {n:CategoryMap(to.loc[to.splits[0],n], add_na=True)
+    def setups(self, to):
+        to.classes = self.items = {n:CategoryMap(to.loc[:to.split,n], add_na=True)
                                    for n in to.all_cat_names}
 
-    def _apply_cats(self, c): return c.cat.codes+1 if is_categorical_dtype(c) else c.map(self[c.name].o2i)
-    def encodes(self, to): to.transform(to.all_cat_names, self._apply_cats)
+    def _apply_cats (self, c): return c.cat.codes+1 if is_categorical_dtype(c) else c.map(self[c.name].o2i)
     def _decode_cats(self, c): return c.map(dict(enumerate(self[c.name].items)))
+    def encodes(self, to): to.transform(to.all_cat_names, self._apply_cats)
     def decodes(self, to): to.transform(to.all_cat_names, self._decode_cats)
 
 #Cell
 class Normalize(TabularProc):
     "Normalize the continuous variables."
     order = 2
-    def setup(self, to):
-        df = to.loc[to.splits[0], to.cont_names]
+    def setups(self, to):
+        df = to.loc[:to.split, to.cont_names]
         self.means,self.stds = df.mean(),df.std(ddof=0)+1e-7
 
     def encodes(self, to): to.conts = (to.conts-self.means) / self.stds
@@ -106,8 +110,8 @@ class FillMissing(TabularProc):
         if fill_vals is None: fill_vals = defaultdict(int)
         store_attr(self, 'fill_strategy,add_col,fill_vals')
 
-    def setup(self, to):
-        df = to.loc[to.splits[0], to.cont_names]
+    def setups(self, to):
+        df = to.loc[:to.split, to.cont_names]
         self.na_dict = {n:self.fill_strategy(df[n], self.fill_vals[n])
                         for n in pd.isnull(to.conts).any().keys()}
 
@@ -122,9 +126,12 @@ class FillMissing(TabularProc):
 
 #Cell
 @delegates(Tabular)
-def process_df(df, procs, inplace=True, **kwargs):
+def process_df(df, procs, inplace=True, splits=None, **kwargs):
     "Process `df` with `procs` and returns the processed dataframe and the `TabularProcessor` associated"
-    to = Tabular(df if inplace else df.copy(), **kwargs)
+    df = df if inplace else df.copy()
+    if splits is not None: df = df.iloc[sum(splits, [])].reset_index(drop=True)
+    split = None if splits is None else len(splits[0])
+    to = Tabular(df, split=split, **kwargs)
     proc = Pipeline(procs)
     proc.setup(to)
     return to,proc
