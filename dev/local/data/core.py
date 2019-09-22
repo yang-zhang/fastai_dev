@@ -3,7 +3,7 @@
 __all__ = ['get_files', 'FileGetter', 'image_extensions', 'get_image_files', 'ImageGetter', 'RandomSplitter',
            'GrandparentSplitter', 'parent_label', 'RegexLabeller', 'CategoryMap', 'Category', 'Categorize',
            'MultiCategory', 'MultiCategorize', 'OneHotEncode', 'ToTensor', 'TfmdDL', 'Cuda', 'ByteToFloatTensor',
-           'Normalize', 'broadcast_vec', 'DataBunch']
+           'Normalize', 'broadcast_vec', 'DataBunch', 'get_c']
 
 #Cell
 from ..torch_basics import *
@@ -100,8 +100,9 @@ class CategoryMap(CollBase):
     def __init__(self, col, sort=True, add_na=False):
         if is_categorical_dtype(col): items = L(col.cat.categories, use_list=True)
         else:
+            if not hasattr(col,'unique'): col = L(col, use_list=True)
             # `o==o` is the generalized definition of non-NaN used by Pandas
-            items = L(o for o in L(col, use_list=True).unique() if o==o)
+            items = L(o for o in col.unique() if o==o)
             if sort: items = items.sorted()
         self.items = '#na#' + items if add_na else items
         self.o2i = defaultdict(int, self.items.val2idx()) if add_na else dict(self.items.val2idx())
@@ -119,7 +120,7 @@ class Categorize(Transform):
         self.vocab = None if vocab is None else CategoryMap(vocab, add_na=add_na)
 
     def setups(self, dsrc):
-        if self.vocab is None and dsrc: self.vocab = CategoryMap(getattr(dsrc,'train',dsrc), add_na=self.add_na)
+        if self.vocab is None and dsrc is not None: self.vocab = CategoryMap(dsrc, add_na=self.add_na)
 
     def encodes(self, o): return self.vocab.o2i[o]
     def decodes(self, o): return Category(self.vocab[o])
@@ -137,9 +138,8 @@ class MultiCategorize(Categorize):
     def setups(self, dsrc):
         if not dsrc: return
         if self.vocab is None:
-            dsrc1 = getattr(dsrc,'train',dsrc)
             vals = set()
-            for b in dsrc1: vals = vals.union(set(b))
+            for b in dsrc: vals = vals.union(set(b))
             self.vocab,self.o2i = uniqueify(list(vals), sort=True, bidir=True)
         setattr(dsrc, 'vocab', self.vocab)
 
@@ -182,9 +182,13 @@ class TfmdDL(DataLoader):
             kwargs[nm].setup(self)
         super().__init__(dataset, bs=bs, shuffle=shuffle, num_workers=num_workers, **kwargs)
 
-    def _retain_dl(self,b):
+    def _one_pass(self):
         its = self.after_batch(self.do_batch([self.do_item(0)]))
+        self._device = find_device(its)
         self._retain_dl = partial(retain_types, typs=L(its).mapped(type))
+
+    def _retain_dl(self,b):
+        self._one_pass()
         # we just replaced ourselves, so this is *not* recursive! :)
         return self._retain_dl(b)
 
@@ -214,6 +218,11 @@ class TfmdDL(DataLoader):
         db = self._decode_batch(b, max_n, False)
         ctxs = [self.dataset.show(o, ctx=ctx, **kwargs) for o,ctx in zip(db, ctxs)]
         if hasattr(b[0], 'display'): b[0].display(ctxs)
+
+    @property
+    def device(self):
+        if not hasattr(self, '_device'): _ = self._one_pass()
+        return self._device
 
 #Cell
 @docs
@@ -262,7 +271,7 @@ def broadcast_vec(dim, ndim, *t, cuda=True):
 @docs
 class DataBunch(GetAttr):
     "Basic wrapper around several `DataLoader`s."
-    _xtra = 'one_batch show_batch dataset'.split()
+    _xtra = 'one_batch show_batch dataset device'.split()
 
     def __init__(self, *dls): self.dls,self.default = dls,dls[0]
     def __getitem__(self, i): return self.dls[i]
@@ -275,3 +284,8 @@ class DataBunch(GetAttr):
               valid_dl="Validation `DataLoader`",
               train_ds="Training `Dataset`",
               valid_ds="Validation `Dataset`")
+
+#Cell
+def get_c(dbunch):
+    for t in dbunch.train_ds.tls[1].tfms.fs:
+        if hasattr(t, 'vocab'): return len(t.vocab)
