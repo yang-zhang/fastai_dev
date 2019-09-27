@@ -10,8 +10,7 @@ __all__ = ['ProcessPoolExecutor', 'parallel', 'parallel_gen', 'UNK', 'PAD', 'BOS
 from ..imports import *
 from ..test import *
 from ..core import *
-from ..data.core import *
-from ..data.external import *
+from ..data.all import *
 from ..notebook.showdoc import show_doc
 
 #Cell
@@ -48,8 +47,14 @@ def parallel_gen(cls, items, n_workers=defaults.cpus, as_gen=False, **kwargs):
         for i,b in enumerate(f(batch)): queue.put((start_idx+i,b))
     processes = [Process(target=_f, args=o) for o in zip(batches,idx)]
     for p in processes: p.start()
-    res = (queue.get() for _ in progress_bar(items, leave=False))
-    try: return res if as_gen else [o[1] for o in sorted(res)]
+    try:
+        for _ in progress_bar(items, leave=False): yield queue.get()
+    #res = []
+    #for _ in progress_bar(items, leave=False):
+    #    res.append(queue.get())
+    #res = (queue.get() for _ in progress_bar(items, leave=False))
+    #try: return res #if as_gen else [o[1] for o in sorted(res)]
+    except Exception as e: print(e)
     finally:
         for p in processes: p.join()
 
@@ -232,7 +237,8 @@ def tokenize_df(df, text_cols, n_workers=defaults.cpus, rules=None, mark_fields=
     mark_fields = ifnone(mark_fields, len(text_cols) > 1)
     rules = L(ifnone(rules, defaults.text_proc_rules.copy()))
     texts = _join_texts(df[text_cols], mark_fields=mark_fields)
-    outputs = L(parallel_tokenize(texts, tok_func, rules, n_workers=n_workers, **tok_kwargs))
+    #outputs = L(parallel_tokenize(texts, tok_func, rules, n_workers=n_workers, **tok_kwargs))
+    outputs = L([o[1] for o in sorted(parallel_tokenize(texts, tok_func, rules, n_workers=n_workers, **tok_kwargs))])
     lengths = outputs.mapped(len)
     counter = Counter()
     for o in outputs: counter.update(o)

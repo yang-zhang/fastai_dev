@@ -37,7 +37,7 @@ def create_body(arch, pretrained=True, cut=None):
         ll = list(enumerate(model.children()))
         cut = next(i for i,o in reversed(ll) if has_pool_type(o))
     if   isinstance(cut, int):      return nn.Sequential(*list(model.children())[:cut])
-    elif isinstance(cut, Callable): return cut(model)
+    elif callable(cut): return cut(model)
     else:                           raise NamedError("cut must be either integer or a function")
 
 #Cell
@@ -89,7 +89,7 @@ def create_cnn_model(arch, nc, cut, pretrained=True, lin_ftrs=None, ps=0.5, cust
 
 #Cell
 def _default_split(m:nn.Module): return L(m[0], m[1]).mapped(trainable_params)
-def _resnet_split(m): return L(m[0][:6], m[0][6:], m[1]).mapped(trainable_params)
+def _resnet_split(m): return L(m[0][:6], m[0][6:], m[1]).mapped(params)
 def _squeezenet_split(m:nn.Module): return L(m[0][0][:5], m[0][0][5:], m[1]).mapped(trainable_params)
 def _densenet_split(m:nn.Module): return L(m[0][0][:7],m[0][0][7:], m[1]).mapped(trainable_params)
 def _vgg_split(m:nn.Module): return L(m[0][0][:22], m[0][0][22:], m[1]).mapped(trainable_params)
