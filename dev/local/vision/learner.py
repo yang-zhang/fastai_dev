@@ -88,12 +88,12 @@ def create_cnn_model(arch, nc, cut, pretrained=True, lin_ftrs=None, ps=0.5, cust
     return nn.Sequential(body, head)
 
 #Cell
-def _default_split(m:nn.Module): return L(m[0], m[1]).mapped(trainable_params)
-def _resnet_split(m): return L(m[0][:6], m[0][6:], m[1]).mapped(params)
-def _squeezenet_split(m:nn.Module): return L(m[0][0][:5], m[0][0][5:], m[1]).mapped(trainable_params)
-def _densenet_split(m:nn.Module): return L(m[0][0][:7],m[0][0][7:], m[1]).mapped(trainable_params)
-def _vgg_split(m:nn.Module): return L(m[0][0][:22], m[0][0][22:], m[1]).mapped(trainable_params)
-def _alexnet_split(m:nn.Module): return L(m[0][0][:6], m[0][0][6:], m[1]).mapped(trainable_params)
+def _default_split(m:nn.Module): return L(m[0], m[1]).map(params)
+def _resnet_split(m): return L(m[0][:6], m[0][6:], m[1]).map(params)
+def _squeezenet_split(m:nn.Module): return L(m[0][0][:5], m[0][0][5:], m[1]).map(params)
+def _densenet_split(m:nn.Module): return L(m[0][0][:7],m[0][0][7:], m[1]).map(params)
+def _vgg_split(m:nn.Module): return L(m[0][0][:22], m[0][0][22:], m[1]).map(params)
+def _alexnet_split(m:nn.Module): return L(m[0][0][:6], m[0][0][6:], m[1]).map(params)
 
 _default_meta    = {'cut':None, 'split':_default_split}
 _resnet_meta     = {'cut':-2, 'split':_resnet_split }
@@ -118,10 +118,10 @@ model_meta = {
 
 #Cell
 @delegates(Learner.__init__)
-def cnn_learner(dbunch, arch, cut=None, pretrained=True, lin_ftrs=None, ps=0.5, custom_head=None, splitter=trainable_params, bn_final=False,
+def cnn_learner(dbunch, arch, cut=None, pretrained=True, lin_ftrs=None, ps=0.5, custom_head=None, splitter=None, bn_final=False,
                 init=nn.init.kaiming_normal_, concat_pool=True, **kwargs):
     "Build convnet style learner."
-    meta = model_meta.get(arch)
+    meta = model_meta.get(arch, _default_meta)
     model = create_cnn_model(arch, get_c(dbunch), ifnone(cut, meta['cut']), pretrained, lin_ftrs, ps=ps, custom_head=custom_head,
         bn_final=bn_final, concat_pool=concat_pool)
     learn = Learner(dbunch, model, splitter=ifnone(splitter, meta['split']), **kwargs)

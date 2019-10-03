@@ -2,13 +2,13 @@
 
 __all__ = ['defaults', 'FixSigMeta', 'PrePostInitMeta', 'NewChkMeta', 'BypassNewMeta', 'copy_func', 'patch_to', 'patch',
            'patch_property', 'use_kwargs', 'delegates', 'funcs_kwargs', 'method', 'add_docs', 'docs', 'custom_dir',
-           'GetAttr', 'delegate_attr', 'coll_repr', 'mask2idxs', 'listable_types', 'CollBase', 'cycle', 'zip_cycle',
-           'is_indexer', 'L', 'ifnone', 'get_class', 'mk_class', 'wrap_class', 'store_attr', 'attrdict', 'properties',
-           'tuplify', 'replicate', 'uniqueify', 'setify', 'is_listy', 'range_of', 'groupby', 'merge', 'shufflish',
-           'IterLen', 'ReindexCollection', 'lt', 'gt', 'le', 'ge', 'eq', 'ne', 'add', 'sub', 'mul', 'truediv', 'Inf',
-           'true', 'stop', 'gen', 'chunked', 'retain_type', 'retain_types', 'show_title', 'ShowTitle', 'Int', 'Float',
-           'Str', 'num_methods', 'rnum_methods', 'inum_methods', 'Tuple', 'TupleTitled', 'trace', 'compose', 'maps',
-           'partialler', 'mapped', 'instantiate', '_0', '_1', '_2', '_3', '_4', 'bind', 'Self', 'Self', 'bunzip',
+           '_0', '_1', '_2', '_3', '_4', 'bind', 'GetAttr', 'delegate_attr', 'coll_repr', 'mask2idxs', 'listable_types',
+           'CollBase', 'cycle', 'zip_cycle', 'is_indexer', 'L', 'ifnone', 'get_class', 'mk_class', 'wrap_class',
+           'store_attr', 'attrdict', 'properties', 'tuplify', 'replicate', 'uniqueify', 'setify', 'is_listy',
+           'range_of', 'groupby', 'merge', 'shufflish', 'IterLen', 'ReindexCollection', 'lt', 'gt', 'le', 'ge', 'eq',
+           'ne', 'add', 'sub', 'mul', 'truediv', 'Inf', 'true', 'stop', 'gen', 'chunked', 'retain_type', 'retain_types',
+           'show_title', 'ShowTitle', 'Int', 'Float', 'Str', 'num_methods', 'rnum_methods', 'inum_methods', 'Tuple',
+           'TupleTitled', 'trace', 'compose', 'maps', 'partialler', 'mapped', 'instantiate', 'Self', 'Self', 'bunzip',
            'join_path_file', 'sort_by_run', 'display_df', 'round_multiple', 'even_mults', 'num_cpus', 'add_props',
            'camel2snake', 'PrettyString']
 
@@ -179,12 +179,33 @@ def custom_dir(c, add:list):
     return dir(type(c)) + list(c.__dict__.keys()) + add
 
 #Cell
+class _Arg:
+    def __init__(self,i): self.i = i
+_0,_1,_2,_3,_4 = _Arg(0),_Arg(1),_Arg(2),_Arg(3),_Arg(4)
+
+#Cell
+class bind:
+    "Same as `partial`, except you can use `_0` `_1` etc param placeholders"
+    def __init__(self, fn, *pargs, **pkwargs):
+        self.fn,self.pargs,self.pkwargs = fn,pargs,pkwargs
+        self.maxi = max((x.i for x in pargs if isinstance(x, _Arg)), default=-1)
+
+    def __call__(self, *args, **kwargs):
+        args = list(args)
+        kwargs = {**self.pkwargs,**kwargs}
+        for k,v in kwargs.items():
+            if isinstance(v,_Arg): kwargs[k] = args.pop(v.i)
+        fargs = [args[x.i] if isinstance(x, _Arg) else x for x in self.pargs] + args[self.maxi+1:]
+        return self.fn(*fargs, **kwargs)
+
+#Cell
 class GetAttr:
     "Inherit from this to have all attr accesses in `self._xtra` passed down to `self.default`"
+    _default='default'
     @property
-    def _xtra(self): return [o for o in dir(self.default) if not o.startswith('_')]
+    def _xtra(self): return [o for o in dir(getattr(self,self._default)) if not o.startswith('_')]
     def __getattr__(self,k):
-        if k not in ('_xtra','default') and (self._xtra is None or k in self._xtra): return getattr(self.default, k)
+        if k not in ('_xtra',self._default) and (self._xtra is None or k in self._xtra): return getattr(getattr(self,self._default), k)
         raise AttributeError(k)
     def __dir__(self): return custom_dir(self, self._xtra)
     def __setstate__(self,data): self.__dict__.update(data)
@@ -218,7 +239,7 @@ def mask2idxs(mask):
     if isinstance(mask,slice): return mask
     mask = list(mask)
     if len(mask)==0: return []
-    if isinstance(mask[0],bool): return [i for i,m in enumerate(mask) if m]
+    if isinstance(mask[0],(bool,NoneType)): return [i for i,m in enumerate(mask) if m]
     return [int(i) for i in mask]
 
 #Cell
@@ -254,6 +275,7 @@ def is_indexer(idx):
 #Cell
 class L(CollBase, GetAttr, metaclass=NewChkMeta):
     "Behaves like a list of `items` but can also index with list of indices or masks"
+    _default='items'
     def __init__(self, items=None, *rest, use_list=False, match=None):
         if rest: items = (items,)+rest
         if items is None: items = []
@@ -280,8 +302,6 @@ class L(CollBase, GetAttr, metaclass=NewChkMeta):
         if not is_iter(o): o = [o]*len(idx)
         for i,o_ in zip(idx,o): self.items[i] = o_
 
-    @property
-    def default(self): return self.items
     def __iter__(self): return iter(self.items.itertuples() if hasattr(self.items,'iloc') else self.items)
     def __contains__(self,b): return b in self.items
     def __invert__(self): return self._new(not i for i in self)
@@ -295,33 +315,40 @@ class L(CollBase, GetAttr, metaclass=NewChkMeta):
         return a
 
     def sorted(self, key=None, reverse=False):
-        "New `L` sorted by `key`. If key is str then use `attrgetter`. If key is int then use `itemgetter`."
         if isinstance(key,str):   k=lambda o:getattr(o,key,0)
         elif isinstance(key,int): k=itemgetter(key)
         else: k=key
         return self._new(sorted(self.items, key=k, reverse=reverse))
 
     @classmethod
+    def split(cls, s, sep=None, maxsplit=-1): return cls(s.split(sep,maxsplit))
+
+    @classmethod
     def range(cls, a, b=None, step=None):
-        "Same as builtin `range`, but returns an `L`. Can pass a collection for `a`, to use `len(a)`"
         if is_coll(a): a = len(a)
         return cls(range(a,b,step) if step is not None else range(a,b) if b is not None else range(a))
 
+    def map(self, f, *args, **kwargs):
+        g = (bind(f,*args,**kwargs) if callable(f)
+             else f.format if isinstance(f,str)
+             else f.__getitem__)
+        return self._new(map(g, self))
+
     def unique(self): return L(dict.fromkeys(self).keys())
-    def val2idx(self): return {v:k for k,v in enumerate(self)}
-    def itemgot(self, idx): return self.mapped(itemgetter(idx))
-    def attrgot(self, k, default=None): return self.mapped(lambda o:getattr(o,k,default))
+    def enumerate(self): return L(enumerate(self))
+    def val2idx(self): return {v:k for k,v in self.enumerate()}
+    def itemgot(self, idx): return self.map(itemgetter(idx))
+    def attrgot(self, k, default=None): return self.map(lambda o:getattr(o,k,default))
     def cycle(self): return cycle(self)
-    def filtered(self, f, *args, **kwargs): return self._new(filter(partial(f,*args,**kwargs), self))
-    def mapped(self, f, *args, **kwargs): return self._new(map(partial(f,*args,**kwargs), self))
-    def mapped_dict(self, f, *args, **kwargs): return {k:f(k, *args,**kwargs) for k in self}
-    def starmapped(self, f, *args, **kwargs): return self._new(itertools.starmap(partial(f,*args,**kwargs), self))
-    def zipped(self, cycled=False): return self._new((zip_cycle if cycled else zip)(*self))
-    def zipwith(self, *rest, cycled=False): return self._new([self, *rest]).zipped(cycled=cycled)
-    def mapped_zip(self, f, cycled=False): return self.zipped(cycled=cycled).starmapped(f)
-    def mapped_zipwith(self, f, *rest, cycled=False): return self.zipwith(*rest, cycled=cycled).starmapped(f)
-    def concat(self): return self._new(itertools.chain.from_iterable(self.mapped(L)))
-    def shuffled(self):
+    def filter(self, f, *args, **kwargs): return self._new(filter(partial(f,*args,**kwargs), self))
+    def map_dict(self, f=noop, *args, **kwargs): return {k:f(k, *args,**kwargs) for k in self}
+    def starmap(self, f, *args, **kwargs): return self._new(itertools.starmap(partial(f,*args,**kwargs), self))
+    def zip(self, cycled=False): return self._new((zip_cycle if cycled else zip)(*self))
+    def zipwith(self, *rest, cycled=False): return self._new([self, *rest]).zip(cycled=cycled)
+    def map_zip(self, f, *args, cycled=False, **kwargs): return self.zip(cycled=cycled).starmap(f, *args, **kwargs)
+    def map_zipwith(self, f, *rest, cycled=False, **kwargs): return self.zipwith(*rest, cycled=cycled).starmap(f, **kwargs)
+    def concat(self): return self._new(itertools.chain.from_iterable(self.map(L)))
+    def shuffle(self):
         it = copy(self.items)
         random.shuffle(it)
         return self._new(it)
@@ -329,21 +356,25 @@ class L(CollBase, GetAttr, metaclass=NewChkMeta):
 #Cell
 add_docs(L,
          __getitem__="Retrieve `idx` (can be list of indices, or mask, or int) items",
+         range="Same as builtin `range`, but returns an `L`. Can pass a collection for `a`, to use `len(a)`",
+         split="Same as builtin `str.split`, but returns an `L`",
+         sorted="New `L` sorted by `key`. If key is str then use `attrgetter`. If key is int then use `itemgetter`",
          unique="Unique items, in stable order",
          val2idx="Dict from value to index",
-         filtered="Create new `L` filtered by predicate `f`, passing `args` and `kwargs` to `f`",
-         mapped="Create new `L` with `f` applied to all `items`, passing `args` and `kwargs` to `f`",
-         mapped_dict="Like `mapped`, but creates a dict from `items` to function results",
-         starmapped="Like `mapped`, but use `itertools.starmap`",
+         filter="Create new `L` filtered by predicate `f`, passing `args` and `kwargs` to `f`",
+         map="Create new `L` with `f` applied to all `items`, passing `args` and `kwargs` to `f`",
+         map_dict="Like `map`, but creates a dict from `items` to function results",
+         starmap="Like `map`, but use `itertools.starmap`",
          itemgot="Create new `L` with item `idx` of all `items`",
          attrgot="Create new `L` with attr `k` of all `items`",
          cycle="Same as `itertools.cycle`",
-         zipped="Create new `L` with `zip(*items)`",
-         zipwith="Create new `L` with `self` zipped with each of `*rest`",
-         mapped_zip="Combine `zipped` and `starmapped`",
-         mapped_zipwith="Combine `zipwith` and `starmapped`",
+         enumerate="Same as `enumerate`",
+         zip="Create new `L` with `zip(*items)`",
+         zipwith="Create new `L` with `self` zip with each of `*rest`",
+         map_zip="Combine `zip` and `starmap`",
+         map_zipwith="Combine `zipwith` and `starmap`",
          concat="Concatenate all elements of list",
-         shuffled="Same as `random.shuffle`, but not inplace")
+         shuffle="Same as `random.shuffle`, but not inplace")
 
 #Cell
 def ifnone(a, b):
@@ -464,8 +495,9 @@ class IterLen:
 @docs
 class ReindexCollection(GetAttr, IterLen):
     "Reindexes collection `coll` with indices `idxs` and optional LRU cache of size `cache`"
+    _default='coll'
     def __init__(self, coll, idxs=None, cache=None):
-        self.default,self.coll,self.idxs,self.cache = coll,coll,ifnone(idxs,L.range(coll)),cache
+        self.coll,self.idxs,self.cache = coll,ifnone(idxs,L.range(coll)),cache
         def _get(self, i): return self.coll[i]
         self._get = types.MethodType(_get,self)
         if cache is not None: self._get = functools.lru_cache(maxsize=cache)(self._get)
@@ -550,7 +582,7 @@ def retain_type(new, old=None, typ=None):
 def retain_types(new, old=None, typs=None):
     "Cast each item of `new` to type of matching item in `old` if it's a superclass"
     if not is_listy(new): return retain_type(new, old, typs)
-    return tuple(L(new, old, typs).mapped_zip(retain_type, cycled=True))
+    return type(new)(L(new, old, typs).map_zip(retain_type, cycled=True))
 
 #Cell
 def show_title(o, ax=None, ctx=None, label=None, **kwargs):
@@ -667,27 +699,12 @@ def partialler(f, *args, order=None, **kwargs):
 #Cell
 def mapped(f, it):
     "map `f` over `it`, unless it's not listy, in which case return `f(it)`"
-    return L(it).mapped(f) if is_listy(it) else f(it)
+    return L(it).map(f) if is_listy(it) else f(it)
 
 #Cell
 def instantiate(t):
     "Instantiate `t` if it's a type, otherwise do nothing"
     return t() if isinstance(t, type) else t
-
-#Cell
-mk_class('_Arg', 'i')
-_0,_1,_2,_3,_4 = _Arg(0),_Arg(1),_Arg(2),_Arg(3),_Arg(4)
-
-#Cell
-class bind:
-    "Same as `partial`, except you can use `_0` `_1` etc param placeholders"
-    def __init__(self, fn, *pargs, **pkwargs):
-        store_attr(self, 'fn,pargs,pkwargs')
-        self.maxi = max((x.i for x in pargs if isinstance(x, _Arg)), default=-1)
-
-    def __call__(self, *args, **kwargs):
-        fargs = L(args[x.i] if isinstance(x, _Arg) else x for x in self.pargs) + args[self.maxi+1:]
-        return self.fn(*fargs, **{**self.pkwargs, **kwargs})
 
 #Cell
 class _Self:
@@ -728,7 +745,7 @@ def ls(self:Path, file_type=None, file_exts=None):
     "Contents of path as a list"
     extns=L(file_exts)
     if file_type: extns += L(k for k,v in mimetypes.types_map.items() if v.startswith(file_type+'/'))
-    return L(self.iterdir()).filtered(lambda x: len(extns)==0 or x.suffix in extns)
+    return L(self.iterdir()).filter(lambda x: len(extns)==0 or x.suffix in extns)
 
 #Cell
 def bunzip(fn):
@@ -762,9 +779,9 @@ def _is_first(f, gs):
     return True
 
 def sort_by_run(fs):
-    end = L(getattr(f, 'toward_end', False) for f in fs)
-    inp,res = L(fs)[~end] + L(fs)[end], []
-    while len(inp) > 0:
+    end = L(fs).attrgot('toward_end')
+    inp,res = L(fs)[~end] + L(fs)[end], L()
+    while len(inp):
         for i,o in enumerate(inp):
             if _is_first(o, inp):
                 res.append(inp.pop(i))
@@ -783,12 +800,13 @@ def display_df(df):
 def round_multiple(x, mult, round_down=False):
     "Round `x` to nearest multiple of `mult`"
     def _f(x_): return (int if round_down else round)(x_/mult)*mult
-    res = L(x).mapped(_f)
+    res = L(x).map(_f)
     return res if is_listy(x) else res[0]
 
 #Cell
 def even_mults(start, stop, n):
     "Build log-stepped array from `start` to `stop` in `n` steps."
+    if n==1: return stop
     mult = stop/start
     step = mult**(1/(n-1))
     return np.array([start*(step**i) for i in range(n)])
