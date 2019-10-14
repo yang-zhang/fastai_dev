@@ -13,11 +13,20 @@ entries:
     title: Getting started
   - folderitems:
     - output: web,pdf
+      title: Vision tutorial
+      url: /tutorial.transfer.learning.html
+    - output: web,pdf
       title: Pets tutorial
       url: /pets.tutorial.html
     - output: web,pdf
       title: Imagenette tutorial
       url: /tutorial.imagenette.html
+    - output: web,pdf
+      title: UlMFiT tutorial
+      url: /tutorial.ulmfit.html
+    - output: web,pdf
+      title: Wikitext tutorial
+      url: /tutorial.wikitext.html
     output: web
     title: Tutorials
   - folderitems:
@@ -80,8 +89,14 @@ entries:
       title: Core
       url: /core.html
     - output: web,pdf
+      title: Utility functions
+      url: /utils.html
+    - output: web,pdf
       title: PyTorch Core
       url: /torch_core.html
+    - output: web,pdf
+      title: Type dispatch
+      url: /dispatch.html
     - output: web,pdf
       title: Transforms and Pipelines
       url: /transform.html
@@ -106,6 +121,13 @@ entries:
     - output: web,pdf
       title: Vision Data Augmentation
       url: /vision.augment.html
+      subfolders:
+      - output: web
+        subfolderitems:
+        - output: web,pdf
+          title: XResnet
+          url: /vision.models.xresnet.html
+        title: Models
     output: web
     title: Vision
   - folderitems:
@@ -118,6 +140,19 @@ entries:
     - output: web,pdf
       title: Text Learner
       url: /text.learner.html
+      subfolders:
+      - output: web
+        subfolderitems:
+        - output: web,pdf
+          title: Core
+          url: /text.models.core.html
+        - output: web,pdf
+          title: AWD LSTM
+          url: /text.models.awdlstm.html
+        - output: web,pdf
+          title: QRNN
+          url: /text.models.qrnn.html
+        title: Models
     output: web
     title: Text
   - folderitems:
@@ -134,6 +169,15 @@ entries:
     title: Tabular
   - folderitems:
     - output: web,pdf
+      title: Medical imagery
+      url: /medical.imaging.html
+    - output: web,pdf
+      title: Medical text
+      url: /medical.text.html
+    output: web
+    title: Medical
+  - folderitems:
+    - output: web,pdf
       title: Export to modules
       url: /notebook.export.html
     - output: web,pdf
@@ -142,6 +186,9 @@ entries:
     - output: web,pdf
       title: Show doc
       url: /notebook.showdoc.html
+    - output: web,pdf
+      title: Test functions
+      url: notebook.test.html
     - output: web,pdf
       title: Core functions
       url: notebook.core.html

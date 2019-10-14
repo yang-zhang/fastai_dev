@@ -3,14 +3,14 @@
 __all__ = ['UNK', 'PAD', 'BOS', 'EOS', 'FLD', 'TK_REP', 'TK_WREP', 'TK_UP', 'TK_MAJ', 'spec_add_spaces',
            'rm_useless_spaces', 'replace_rep', 'replace_wrep', 'fix_html', 'replace_all_caps', 'replace_maj',
            'lowercase', 'replace_space', 'BaseTokenizer', 'SpacyTokenizer', 'TokenizeBatch', 'tokenize1',
-           'parallel_tokenize', 'tokenize_folder', 'tokenize_df', 'tokenize_csv', 'SentencePieceTokenizer']
+           'parallel_tokenize', 'fn_counter_pkl', 'tokenize_folder', 'tokenize_df', 'tokenize_csv',
+           'load_tokenized_csv', 'SentencePieceTokenizer']
 
 #Cell
 from ..torch_basics import *
 from ..test import *
 from ..core import *
 from ..data.all import *
-from ..notebook.showdoc import show_doc
 
 #Cell
 import spacy,html
@@ -133,7 +133,7 @@ class TokenizeBatch:
 #Cell
 def tokenize1(text, tok_func=SpacyTokenizer, rules=None, post_rules=None, **tok_kwargs):
     "Tokenize one `text` with an instance of `tok_func` and some `rules`"
-    return next(iter(TokenizeBatch(tok_func, rules, post_rules, **tok_kwargs)([text])))
+    return first(TokenizeBatch(tok_func, rules, post_rules, **tok_kwargs)([text]))
 
 #Cell
 def parallel_tokenize(items, tok_func, rules, as_gen=False, n_workers=defaults.cpus, **tok_kwargs):
@@ -143,17 +143,7 @@ def parallel_tokenize(items, tok_func, rules, as_gen=False, n_workers=defaults.c
                         rules=rules, n_workers=n_workers, **tok_kwargs)
 
 #Cell
-@patch
-def read(self:Path):
-    "Read the content of `fname`"
-    with self.open() as f: return f.read()
-
-#Cell
-@patch
-def write(self:Path, txt):
-    "Write `txt` to `self`, creating directories as needed"
-    self.parent.mkdir(parents=True,exist_ok=True)
-    with self.open('w') as f: f.write(txt)
+fn_counter_pkl = 'counter.pkl'
 
 #Cell
 def tokenize_folder(path, extensions=None, folders=None, output_dir=None, n_workers=defaults.cpus,
@@ -168,10 +158,9 @@ def tokenize_folder(path, extensions=None, folders=None, output_dir=None, n_work
     for i,tok in parallel_tokenize(fnames, tok_func, rules, as_gen=True, n_workers=n_workers, **tok_kwargs):
         out = output_dir/fnames[i].relative_to(path)
         out.write(' '.join(tok))
-        out.with_suffix('.len').write(str(len(tok)))
         counter.update(tok)
 
-    pickle.dump(counter, open(output_dir/'counter.pkl','wb'))
+    (output_dir/fn_counter_pkl).save(counter)
 
 #Cell
 def _join_texts(df, mark_fields=False):
@@ -186,6 +175,7 @@ def tokenize_df(df, text_cols, n_workers=defaults.cpus, rules=None, mark_fields=
                 tok_func=SpacyTokenizer, **tok_kwargs):
     "Tokenize texts in `df[text_cols]` in parallel using `n_workers`"
     text_cols = L(text_cols)
+    #mark_fields defaults to False if there is one column of texts, True if there are multiple
     if mark_fields is None: mark_fields = len(text_cols)>1
     rules = L(ifnone(rules, defaults.text_proc_rules.copy()))
     texts = _join_texts(df[text_cols], mark_fields=mark_fields)
@@ -194,23 +184,34 @@ def tokenize_df(df, text_cols, n_workers=defaults.cpus, rules=None, mark_fields=
 
     other_cols = df.columns[~df.columns.isin(text_cols)]
     res = df[other_cols].copy()
-    res['text'],res['text_lengths'] = outputs,outputs.map(len)
+    res['text'] = outputs
     return res,Counter(outputs.concat())
 
 #Cell
-#TODO: test + rework
 def tokenize_csv(fname, text_cols, outname=None, n_workers=4, rules=None, mark_fields=None,
                  tok_func=SpacyTokenizer, header='infer', chunksize=50000, **tok_kwargs):
     "Tokenize texts in the `text_cols` of the csv `fname` in parallel using `n_workers`"
     df = pd.read_csv(fname, header=header, chunksize=chunksize)
     outname = Path(ifnone(outname, fname.parent/f'{fname.stem}_tok.csv'))
     cnt = Counter()
+
     for i,dfp in enumerate(df):
-        out,c = tokenize_df(dfp, text_cols, n_workers=n_workers, pre_rules=pre_rules, post_rules=post_rules,
+        out,c = tokenize_df(dfp, text_cols, n_workers=n_workers, rules=rules,
                             mark_fields=mark_fields, tok_func=tok_func, **tok_kwargs)
+        out.text = out.text.str.join(' ')
         out.to_csv(outname, header=(None,header)[i==0], index=False, mode=('a','w')[i==0])
         cnt.update(c)
-    pickle.dump(cnt, open(outname.parent/'counter.pkl', 'wb'))
+
+    outname.with_suffix('.pkl').save(cnt)
+
+#Cell
+def load_tokenized_csv(fname):
+    "Utility function to quickly load a tokenized csv ans the corresponding counter"
+    fname = Path(fname)
+    out = pd.read_csv(fname)
+    for txt_col in out.columns[1:-1]:
+        out[txt_col] = out[txt_col].str.split(' ')
+    return out,fname.with_suffix('.pkl').load()
 
 #Cell
 class SentencePieceTokenizer():#TODO: pass the special tokens symbol to sp
@@ -261,5 +262,5 @@ class SentencePieceTokenizer():#TODO: pass the special tokens symbol to sp
                 f.write(f'{t}\n')
         return {'sp_model': self.train(raw_text_path)}
 
-    def pipe(self, items):
+    def __call__(self, items):
         for t in items: yield self.tok.EncodeAsPieces(t)

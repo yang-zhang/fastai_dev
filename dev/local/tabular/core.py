@@ -8,7 +8,6 @@ from ..torch_basics import *
 from ..test import *
 from ..core import *
 from ..data.all import *
-from ..notebook.showdoc import *
 
 #Cell
 pd.set_option('mode.chained_assignment','raise')
@@ -145,6 +144,11 @@ class ReadTabBatch(ItemTransform):
         to = self.to.new(df)
         to = self.to.procs.decode(to)
         return to
+
+#Cell
+@typedispatch
+def show_batch(x: Tabular, y, its, max_n=10, ctxs=None):
+    x.show()
 
 #Cell
 @delegates()

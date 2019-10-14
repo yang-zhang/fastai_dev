@@ -2,18 +2,15 @@
 
 __all__ = ['get_files', 'FileGetter', 'image_extensions', 'get_image_files', 'ImageGetter', 'RandomSplitter',
            'GrandparentSplitter', 'parent_label', 'RegexLabeller', 'CategoryMap', 'Category', 'Categorize',
-           'MultiCategory', 'MultiCategorize', 'OneHotEncode', 'get_c', 'ToTensor', 'Cuda', 'ByteToFloatTensor',
-           'Normalize', 'broadcast_vec']
+           'MultiCategory', 'MultiCategorize', 'OneHotEncode', 'EncodedMultiCategorize', 'get_c', 'ToTensor', 'Cuda',
+           'ByteToFloatTensor', 'broadcast_vec', 'Normalize']
 
 #Cell
 from ..torch_basics import *
 from ..test import *
-from .load import *
-from ..transform import *
 from .core import *
+from .load import *
 from .external import *
-from ..notebook.showdoc import *
-from ..layers import *
 
 #Cell
 def _get_files(p, fs, extensions=None):
@@ -26,13 +23,14 @@ def _get_files(p, fs, extensions=None):
 def get_files(path, extensions=None, recurse=True, folders=None):
     "Get all the files in `path` with optional `extensions`, optionally with `recurse`, only in `folders`, if specified."
     path = Path(path)
+    folders=L(folders)
     extensions = setify(extensions)
     extensions = {e.lower() for e in extensions}
     if recurse:
         res = []
         for i,(p,d,f) in enumerate(os.walk(path)): # returns (dirpath, dirnames, filenames)
-            if folders is not None and i==0: d[:] = [o for o in d if o in folders]
-            else:                            d[:] = [o for o in d if not o.startswith('.')]
+            if len(folders) !=0 and i==0: d[:] = [o for o in d if o in folders]
+            else:                         d[:] = [o for o in d if not o.startswith('.')]
             res += _get_files(p, f, extensions)
     else:
         f = [o.name for o in os.scandir(path) if o.is_file()]
@@ -123,7 +121,7 @@ class Categorize(Transform):
     def setups(self, dsrc):
         if self.vocab is None and dsrc is not None: self.vocab = CategoryMap(dsrc, add_na=self.add_na)
 
-    def encodes(self, o): return self.vocab.o2i[o]
+    def encodes(self, o): return TensorCategory(self.vocab.o2i[o])
     def decodes(self, o): return Category(self.vocab[o])
 
 #Cell
@@ -131,7 +129,8 @@ Category.create = Categorize
 
 #Cell
 class MultiCategory(L):
-    def show(self, ctx=None, sep=';', **kwargs): return show_title(sep.join(self.map(str)), ctx=ctx)
+    def show(self, ctx=None, sep=';', color='black', **kwargs):
+        return show_title(sep.join(self.map(str)), ctx=ctx, color=color)
 
 #Cell
 class MultiCategorize(Categorize):
@@ -142,31 +141,39 @@ class MultiCategorize(Categorize):
         if self.vocab is None:
             vals = set()
             for b in dsrc: vals = vals.union(set(b))
-            self.vocab,self.o2i = uniqueify(list(vals), sort=True, bidir=True)
+            self.vocab = CategoryMap(list(vals))
         setattr(dsrc, 'vocab', self.vocab)
 
-    def encodes(self, o):                return [self.o2i  [o_] for o_ in o]
-    def decodes(self, o): return MultiCategory([self.vocab[o_] for o_ in o])
+    def encodes(self, o): return [self.vocab.o2i  [o_] for o_ in o]
+    def decodes(self, o): return MultiCategory ([self.vocab[o_] for o_ in o])
 
 #Cell
 MultiCategory.create = MultiCategorize
 
 #Cell
 class OneHotEncode(Transform):
-    "One-hot encodes targets and optionally decodes with `vocab`"
+    "One-hot encodes targets"
     order=2
-    def __init__(self, do_encode=True, vocab=None): self.do_encode,self.vocab = do_encode,vocab
+    def __init__(self, c=None): self.c = c
 
     def setups(self, dsrc):
-        if self.vocab is not None:  self.c = len(self.vocab)
-        else: self.c = len(L(getattr(dsrc, 'vocab', None)))
-        if not self.c: warn("Couldn't infer the number of classes, please pass a `vocab` at init")
+        if self.c is None: self.c = len(L(getattr(dsrc, 'vocab', None)))
+        if not self.c: warn("Couldn't infer the number of classes, please pass a value for `c` at init")
 
-    def encodes(self, o): return one_hot(o, self.c) if self.do_encode else tensor(o).byte()
-    def decodes(self, o): return one_hot_decode(o, self.vocab)
+    def encodes(self, o): return TensorCategory(one_hot(o, self.c).bool())
+    def decodes(self, o): return one_hot_decode(o, None)
+
+#Cell
+class EncodedMultiCategorize(Categorize):
+    "Transform of one-hot encoded multi-category that decodes with `vocab`"
+    loss_func,order=BCEWithLogitsLossFlat(),1
+    def __init__(self, vocab): self.vocab = vocab
+    def encodes(self, o): return TensorCategory(tensor(o).bool())
+    def decodes(self, o): return MultiCategory (one_hot_decode(o, self.vocab))
 
 #Cell
 def get_c(dbunch):
+    if getattr(dbunch, 'c', False): return dbunch.c
     vocab = getattr(dbunch, 'vocab', [])
     if len(vocab) > 0 and is_listy(vocab[-1]): vocab = vocab[-1]
     return len(vocab)
@@ -201,20 +208,24 @@ class ByteToFloatTensor(Transform):
     def decodes(self, o:TensorImage): return o.clamp(0., 1.) if self.div else o
 
 #Cell
-@docs
-class Normalize(Transform):
-    "Normalize/denorm batch of `TensorImage`"
-    order=99
-    def __init__(self, mean, std): self.mean,self.std = mean,std
-    def encodes(self, x:TensorImage): return (x-self.mean) / self.std
-    def decodes(self, x:TensorImage): return (x*self.std ) + self.mean
-
-    _docs=dict(encodes="Normalize batch", decodes="Denormalize batch")
-
-#Cell
 def broadcast_vec(dim, ndim, *t, cuda=True):
     "Make a vector broadcastable over `dim` (out of `ndim` total) by prepending and appending unit axes"
     v = [1]*ndim
     v[dim] = -1
     f = to_device if cuda else noop
     return [f(tensor(o).view(*v)) for o in t]
+
+#Cell
+@docs
+class Normalize(Transform):
+    "Normalize/denorm batch of `TensorImage`"
+    order=99
+    def __init__(self, mean, std, dim=1, ndim=4, cuda=True):
+        self.mean,self.std = broadcast_vec(dim, ndim, mean, std, cuda=cuda)
+
+    def encodes(self, x:TensorImage): return (x-self.mean) / self.std
+    def decodes(self, x:TensorImage):
+        f = to_cpu if x.device.type=='cpu' else noop
+        return (x*f(self.std) + f(self.mean))
+
+    _docs=dict(encodes="Normalize batch", decodes="Denormalize batch")
