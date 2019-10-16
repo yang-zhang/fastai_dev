@@ -20,6 +20,7 @@ class UnetBlock(Module):
     "A quasi-UNet block, using `PixelShuffle_ICNR upsampling`."
     @delegates(ConvLayer.__init__)
     def __init__(self, up_in_c, x_in_c, hook, final_div=True, blur=False, act_cls=defaults.activation,
+<<<<<<< HEAD
                  self_attention=False, init=nn.init.kaiming_normal_, **kwargs):
         self.hook = hook
         self.shuf = PixelShuffle_ICNR(up_in_c, up_in_c//2, blur=blur, act_cls=act_cls)
@@ -28,6 +29,16 @@ class UnetBlock(Module):
         nf = ni if final_div else ni//2
         self.conv1 = ConvLayer(ni, nf, act_cls=act_cls, **kwargs)
         self.conv2 = ConvLayer(nf, nf, act_cls=act_cls, xtra=SelfAttention(nf) if self_attention else None, **kwargs)
+=======
+                 self_attention=False, init=nn.init.kaiming_normal_, norm_type=None, **kwargs):
+        self.hook = hook
+        self.shuf = PixelShuffle_ICNR(up_in_c, up_in_c//2, blur=blur, act_cls=act_cls, norm_type=norm_type)
+        self.bn = BatchNorm(x_in_c)
+        ni = up_in_c//2 + x_in_c
+        nf = ni if final_div else ni//2
+        self.conv1 = ConvLayer(ni, nf, act_cls=act_cls, norm_type=norm_type, **kwargs)
+        self.conv2 = ConvLayer(nf, nf, act_cls=act_cls, norm_type=norm_type, xtra=SelfAttention(nf) if self_attention else None, **kwargs)
+>>>>>>> master
         self.relu = act_cls()
         apply_init(nn.Sequential(self.conv1, self.conv2), init)
 
@@ -49,7 +60,11 @@ class DynamicUnet(SequentialEx):
         imsize = img_size
         sizes = model_sizes(encoder, size=imsize)
         sz_chg_idxs = list(reversed(_get_sz_change_idxs(sizes)))
+<<<<<<< HEAD
         self.sfs = hook_outputs([encoder[i] for i in sz_chg_idxs])
+=======
+        self.sfs = hook_outputs([encoder[i] for i in sz_chg_idxs], detach=False)
+>>>>>>> master
         x = dummy_eval(encoder, imsize).detach()
 
         ni = sizes[-1][1]
@@ -69,7 +84,11 @@ class DynamicUnet(SequentialEx):
             x = unet_block(x)
 
         ni = x.shape[1]
+<<<<<<< HEAD
         if imsize != sizes[0][-2:]: layers.append(PixelShuffle_ICNR(ni, act_cls=act_cls))
+=======
+        if imsize != sizes[0][-2:]: layers.append(PixelShuffle_ICNR(ni, act_cls=act_cls, norm_type=norm_type))
+>>>>>>> master
         x = PixelShuffle_ICNR(ni)(x)
         if imsize != x.shape[-2:]: layers.append(Lambda(lambda x: F.interpolate(x, imsize, mode='nearest')))
         if last_cross:
@@ -77,7 +96,12 @@ class DynamicUnet(SequentialEx):
             ni += in_channels(encoder)
             layers.append(ResBlock(1, ni, ni//2 if bottle else ni, act_cls=act_cls, norm_type=norm_type, **kwargs))
         layers += [ConvLayer(ni, n_classes, ks=1, act_cls=None, norm_type=norm_type, **kwargs)]
+<<<<<<< HEAD
         apply_init(nn.Sequential(layers[2], *layers[-2:]), init)
+=======
+        apply_init(nn.Sequential(layers[3], layers[-2]), init)
+        #apply_init(nn.Sequential(layers[2]), init)
+>>>>>>> master
         if y_range is not None: layers.append(SigmoidRange(*y_range))
         super().__init__(*layers)
 

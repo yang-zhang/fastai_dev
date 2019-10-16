@@ -232,7 +232,10 @@
   "in_channels": "03a_layers.ipynb",
   "fa_collate": "04_dataloader.ipynb",
   "fa_convert": "04_dataloader.ipynb",
+<<<<<<< HEAD
   "Sampler": "04_dataloader.ipynb",
+=======
+>>>>>>> master
   "DataLoader": "04_dataloader.ipynb",
   "default_show_batch": "05_data_core.ipynb",
   "default_show_results": "05_data_core.ipynb",
@@ -274,7 +277,10 @@
   "imagenet_stats": "08_vision_core.ipynb",
   "cifar_stats": "08_vision_core.ipynb",
   "mnist_stats": "08_vision_core.ipynb",
+<<<<<<< HEAD
   "size": "07_vision_core.ipynb",
+=======
+>>>>>>> master
   "n_px": "08_vision_core.ipynb",
   "shape": "08_vision_core.ipynb",
   "aspect": "08_vision_core.ipynb",
@@ -474,8 +480,13 @@
   "Recorder.plot_lr_find": "14_callback_schedule.ipynb",
   "Learner.lr_find": "14_callback_schedule.ipynb",
   "CollectDataCallback": "14a_callback_data.ipynb",
+<<<<<<< HEAD
   "SamplerCallback": "14a_callback_data.ipynb",
   "Learner.train_sampler": "14a_callback_data.ipynb",
+=======
+  "WeightedDL": "14a_callback_data.ipynb",
+  "weighted_databunch": "14a_callback_data.ipynb",
+>>>>>>> master
   "Hook": "15_callback_hook.ipynb",
   "hook_output": "15_callback_hook.ipynb",
   "Hooks": "15_callback_hook.ipynb",
@@ -600,6 +611,10 @@
   "dicom_windows": "60_medical_imaging.ipynb",
   "show": "60_medical_imaging.ipynb",
   "DcmDataset.zoom": "60_medical_imaging.ipynb",
+<<<<<<< HEAD
+=======
+  "DcmDataset.pct_in_window": "60_medical_imaging.ipynb",
+>>>>>>> master
   "DcmDataset.as_dict": "60_medical_imaging.ipynb",
   "pd.DataFrame.from_dicoms": "60_medical_imaging.ipynb",
   "in_ipython": "90_notebook_core.ipynb",

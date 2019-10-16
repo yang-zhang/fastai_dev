@@ -6,7 +6,6 @@ __all__ = ['fa_collate', 'fa_convert', 'Sampler', 'DataLoader']
 from ..torch_basics import *
 from ..test import *
 
-#Cell
 from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 
@@ -24,7 +23,18 @@ class _FakeLoader(GetAttr):
         self.dataset,self.default,self.worker_init_fn = self,d,_wif
         store_attr(self, 'd,pin_memory,num_workers,timeout')
 
-    def __iter__(self): return iter(self.d.create_batches(self.d.sampler()))
+    def __iter__(self): return iter(self.d.create_batches(self.d.sample()))
+
+    @property
+    def multiprocessing_context(self): return (None,multiprocessing)[self.num_workers>0]
+
+    @contextmanager
+    def no_multiproc(self):
+        old_nw = self.num_workers
+        try:
+            self.num_workers = 0
+            yield self.d
+        finally: self.num_workers = old_nw
 
     @property
     def multiprocessing_context(self): return (None,multiprocessing)[self.num_workers>0]
@@ -53,15 +63,31 @@ def fa_convert(t):
             else default_convert(t))
 
 #Cell
+<<<<<<< HEAD
 class Sampler:
     def __init__(self, dataset=None, bs=None, shuffle=False, drop_last=False, indexed=None, n=None):
+=======
+@funcs_kwargs
+class DataLoader(GetAttr):
+    wif=before_iter=after_item=before_batch=after_batch=after_iter = noops
+    _methods = 'wif before_iter create_batches create_item after_item before_batch create_batch retain after_batch after_iter'.split()
+    _default = 'dataset'
+    def __init__(self, dataset=None, bs=None, num_workers=0, pin_memory=False, timeout=0,
+                 shuffle=False, drop_last=False, indexed=None, n=None, **kwargs):
+>>>>>>> master
         assert not (bs is None and drop_last)
         if indexed is None: indexed = dataset is not None and hasattr(dataset,'__getitem__')
         if n is None:
             try: n = len(dataset)
             except TypeError: pass
+<<<<<<< HEAD
         store_attr(self, 'bs,shuffle,drop_last,indexed,n')
         self.rng,self.nw,self.offs = random.Random(),1,0
+=======
+        store_attr(self, 'dataset,bs,shuffle,drop_last,indexed,n,pin_memory,timeout')
+        self.rng,self.nw,self.offs = random.Random(),1,0
+        self.fake_l = _FakeLoader(self, pin_memory, num_workers, timeout)
+>>>>>>> master
 
     def __len__(self):
         if self.n is None: raise TypeError
@@ -72,11 +98,16 @@ class Sampler:
         idxs = Inf.count if self.indexed else Inf.nones
         return idxs if self.n is None else list(itertools.islice(idxs, self.n))
 
+<<<<<<< HEAD
     def __call__(self):
+=======
+    def sample(self):
+>>>>>>> master
         idxs = self.get_idxs()
-        idxs = self.shuffle_fn(idxs) if self.shuffle else idxs
+        if self.shuffle: idxs = self.shuffle_fn(idxs)
         return (b for i,b in enumerate(idxs) if i//(self.bs or 1)%self.nw==self.offs)
 
+<<<<<<< HEAD
     def new(self, dataset=None, cls=None, **kwargs):
         if cls is None: cls = type(self)
         cur_kwargs = dict(dataset=dataset, bs=self.bs, shuffle=self.shuffle, drop_last=self.drop_last, indexed=self.indexed)
@@ -114,10 +145,23 @@ class DataLoader(GetAttr):
         self.it = iter(self.dataset) if self.dataset is not None else None
         res = map(self.do_item, samps)
         yield from map(self.do_batch, self.sampler.chunkify(res))
+=======
+    def __iter__(self):
+        self.randomize()
+        self.before_iter()
+        for b in _loaders[self.fake_l.num_workers==0](self.fake_l): yield self.after_batch(b)
+        self.after_iter()
+
+    def create_batches(self, samps):
+        self.it = iter(self.dataset) if self.dataset is not None else None
+        res = map(self.do_item, samps)
+        yield from map(self.do_batch, self.chunkify(res))
+>>>>>>> master
 
     def new(self, dataset=None, cls=None, **kwargs):
         if dataset is None: dataset = self.dataset
         if cls is None: cls = type(self)
+<<<<<<< HEAD
         cur_kwargs = dict(dataset=dataset, sampler=self.sampler.new(dataset),
                           num_workers=self.fake_l.num_workers, pin_memory=self.pin_memory, timeout=self.timeout)
         for n in self._methods: cur_kwargs[n] = getattr(self, n)
@@ -130,5 +174,22 @@ class DataLoader(GetAttr):
     def do_item(self, s):  return self.after_item(self.create_item(s))
     def do_batch(self, b): return self.retain(self.create_batch(self.before_batch(b)), b)
 
+=======
+        cur_kwargs = dict(dataset=dataset, num_workers=self.fake_l.num_workers, pin_memory=self.pin_memory, timeout=self.timeout,
+                          bs=self.bs, shuffle=self.shuffle, drop_last=self.drop_last, indexed=self.indexed)
+        for n in self._methods: cur_kwargs[n] = getattr(self, n)
+        return cls(**merge(cur_kwargs, kwargs))
+
+    @property
+    def prebatched(self): return self.bs is None
+    def chunkify(self, b): return b if self.prebatched else chunked(b, self.bs, self.drop_last)
+    def shuffle_fn(self, idxs): return self.rng.sample(idxs, len(idxs))
+    def randomize(self): self.rng = random.Random(self.rng.randint(0,2**32-1))
+    def retain(self, res, b):  return retain_types(res, b[0] if is_listy(b) else b)
+    def create_item(self, s):  return next(self.it) if s is None else self.dataset[s]
+    def create_batch(self, b): return (fa_collate,fa_convert)[self.prebatched](b)
+    def do_item(self, s):  return self.after_item(self.create_item(s))
+    def do_batch(self, b): return self.retain(self.create_batch(self.before_batch(b)), b)
+>>>>>>> master
     def one_batch(self):
         with self.fake_l.no_multiproc(): return first(self)

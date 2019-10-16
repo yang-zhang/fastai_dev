@@ -102,9 +102,12 @@ class TfmdDL(DataLoader):
         if hasattr(self.dataset, 'n_inp'): return self.dataset.n_inp
         if not hasattr(self, '_n_inp'): self._one_pass()
         return self._n_inp
+<<<<<<< HEAD
 
     @property
     def items(self): return self.tls[0].items
+=======
+>>>>>>> master
 
 #Cell
 @docs
@@ -133,17 +136,26 @@ class FilteredBase:
         self.databunch = delegates(self._dl_type.__init__)(self.databunch)
         super().__init__(*args, **kwargs)
 
-    def _new(self, items, **kwargs): return super()._new(items, splits=self.splits, **kwargs)
-    def subset(self): raise NotImplemented
     @property
     def n_subsets(self): return len(self.splits)
+    def _new(self, items, **kwargs): return super()._new(items, splits=self.splits, **kwargs)
+    def subset(self): raise NotImplemented
 
+<<<<<<< HEAD
     def databunch(self, bs=16, val_bs=None, shuffle_train=True, n=None, dl_kwargs=None, **kwargs):
+=======
+    def databunch(self, bs=16, val_bs=None, shuffle_train=True, n=None, dl_type=None, dl_kwargs=None, **kwargs):
+>>>>>>> master
         if dl_kwargs is None: dl_kwargs = [{}] * self.n_subsets
         ns = self.n_subsets-1
         bss = [bs] + [2*bs]*ns if val_bs is None else [bs] + [val_bs]*ns
         shuffles = [shuffle_train] + [False]*ns
+<<<<<<< HEAD
         dls = [self._dl_type(self.subset(i), bs=b, shuffle=s, drop_last=s, n=n if i==0 else None, **kwargs, **dk)
+=======
+        if dl_type is None: dl_type = self._dl_type
+        dls = [dl_type(self.subset(i), bs=b, shuffle=s, drop_last=s, n=n if i==0 else None, **kwargs, **dk)
+>>>>>>> master
                for i,(b,s,dk) in enumerate(zip(bss,shuffles,dl_kwargs))]
         return DataBunch(*dls)
 
@@ -212,6 +224,8 @@ class DataSource(FilteredBase):
     def splits(self): return self.tls[0].splits
     @property
     def split_idx(self): return self.tls[0].tfms.split_idx
+    @property
+    def items(self): return self.tls[0].items
 
     def show(self, o, ctx=None, **kwargs):
         for o_,tl in zip(o,self.tls): ctx = tl.show(o_, ctx=ctx, **kwargs)

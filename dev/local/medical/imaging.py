@@ -56,8 +56,13 @@ def freqhist_bins(self:Tensor, n_bins=100):
 @patch
 def hist_scaled(self:Tensor, brks=None):
     if brks is None: brks = self.freqhist_bins()
+<<<<<<< HEAD
     ys = torch.arange(len(brks), dtype=torch.float) / brks[-1]
     return self.flatten().interp_1d(brks, ys).reshape(self.shape)
+=======
+    ys = torch.linspace(0., 1., len(brks))
+    return self.flatten().interp_1d(brks, ys).reshape(self.shape).clamp(0.,1.)
+>>>>>>> master
 
 #Cell
 @patch
@@ -65,7 +70,11 @@ def hist_scaled_px(self:DcmDataset, brks=None, min_px=None, max_px=None):
     px = self.scaled_px
     if min_px is not None: px[px<min_px] = min_px
     if max_px is not None: px[px>max_px] = max_px
+<<<<<<< HEAD
     return px.hist_scaled()
+=======
+    return px.hist_scaled(brks=brks)
+>>>>>>> master
 
 #Cell
 @patch
@@ -96,8 +105,14 @@ dicom_windows = types.SimpleNamespace(
 #Cell
 @patch
 @delegates(show_image)
+<<<<<<< HEAD
 def show(self:DcmDataset, scale=True, cmap=plt.cm.bone, min_px=-1000, max_px=None, **kwargs):
     px = (self.windowed(*scale) if isinstance(scale,tuple)
+=======
+def show(self:DcmDataset, scale=True, cmap=plt.cm.bone, min_px=-1100, max_px=None, **kwargs):
+    px = (self.windowed(*scale) if isinstance(scale,tuple)
+          else self.hist_scaled_px(min_px=min_px,max_px=max_px,brks=scale) if isinstance(scale,(ndarray,Tensor))
+>>>>>>> master
           else self.hist_scaled_px(min_px=min_px,max_px=max_px) if scale
           else self.scaled_px)
     show_image(px, cmap=cmap, **kwargs)
@@ -122,7 +137,18 @@ def _split_elem(res,k,v):
 
 #Cell
 @patch
+<<<<<<< HEAD
 def as_dict(self:DcmDataset, px_summ=True):
+=======
+def pct_in_window(dcm:DcmDataset, w, l):
+    "% of pixels in the window `(w,l)`"
+    px = dcm.scaled_px
+    return ((px > l-w//2) & (px < l+w//2)).float().mean().item()
+
+#Cell
+@patch
+def as_dict(self:DcmDataset, px_summ=True, window=dicom_windows.brain):
+>>>>>>> master
     pxdata = (0x7fe0,0x0010)
     vals = [self[o] for o in self.keys() if o != pxdata]
     its = [(v.keyword,v.value) for v in vals]
@@ -134,6 +160,10 @@ def as_dict(self:DcmDataset, px_summ=True):
     try:
         pxs = self.pixel_array
         for f in stats: res['img_'+f] = getattr(pxs,f)()
+<<<<<<< HEAD
+=======
+        res['img_pct_window'] = self.pct_in_window(*window)
+>>>>>>> master
     except Exception as e:
         for f in stats: res['img_'+f] = 0
         print(res,e)
@@ -141,9 +171,18 @@ def as_dict(self:DcmDataset, px_summ=True):
     return res
 
 #Cell
+<<<<<<< HEAD
 def _dcm2dict(px_summ, fn): return fn.dcmread().as_dict(px_summ)
 
 #Cell
 @delegates(parallel)
 def _from_dicoms(cls, fns, px_summ=True, **kwargs): return pd.DataFrame(parallel(partial(_dcm2dict,px_summ), fns, **kwargs))
+=======
+def _dcm2dict(fn, **kwargs): return fn.dcmread().as_dict(**kwargs)
+
+#Cell
+@delegates(parallel)
+def _from_dicoms(cls, fns, n_workers=0, **kwargs):
+    return pd.DataFrame(parallel(_dcm2dict, fns, n_workers=n_workers, **kwargs))
+>>>>>>> master
 pd.DataFrame.from_dicoms = classmethod(_from_dicoms)
